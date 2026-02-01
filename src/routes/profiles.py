@@ -12,7 +12,10 @@ from fastapi import (
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    OAuth2PasswordBearer
+)
 
 from database import get_db, UserModel, UserProfileModel
 from config import get_jwt_auth_manager, get_s3_storage_client
@@ -20,13 +23,25 @@ from schemas import ProfileRequestSchema, ProfileResponseSchema
 from security.interfaces import JWTAuthManagerInterface
 from storages import S3StorageInterface
 from validation import validate_image
-from exceptions import TokenExpiredError
-
+from exceptions import TokenExpiredError, InvalidTokenError
 
 router = APIRouter()
 
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/users/{user_id}/profile/"
+)
 
-security = HTTPBearer()
+
+async def _get_user(
+        db: Annotated[AsyncSession, Depends(get_db)],
+        user_id: int
+) -> UserModel:
+    user = await db.get(UserModel, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or not active.",
+        )
 
 
 @router.post(
@@ -36,47 +51,44 @@ security = HTTPBearer()
 )
 async def create_user_profile(
         user_id: int,
+        profile_data: ProfileRequestSchema,
+        token: Annotated[str, Depends(oauth2_scheme)],
         db: Annotated[AsyncSession, Depends(get_db)],
-        auth: Annotated[HTTPAuthorizationCredentials, Depends(security)],
         jwt_manager: Annotated[
             JWTAuthManagerInterface, Depends(get_jwt_auth_manager)],
         storage_client: Annotated[
             S3StorageInterface, Depends(get_s3_storage_client)],
-        first_name: str = Form(...),
-        last_name: str = Form(...),
-        gender: str = Form(...),
-        date_of_birth: date = Form(...),
-        info: str = Form(...),
-        avatar: UploadFile = File(...)
 ):
-    token = auth.credentials
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header is missing",
+        )
     try:
         payload = jwt_manager.decode_access_token(token)
+        user_auth_id: int = payload.get("user_id") or payload.get("sub")
+        if user_auth_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Authorization header format. Expected 'Bearer <token>'",
+        )
     except TokenExpiredError:
-        raise HTTPException(status_code=401, detail="Token has expired.")
-    except Exception:
         raise HTTPException(
-            status_code=401,
-            detail="Invalid Authorization header format. Expected 'Bearer <token>'"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired.",
         )
 
-    current_user_id = int(payload.get("sub") or payload.get("user_id"))
+    user = await _get_user(db=db, user_id=user_auth_id)
 
-    user_result = await db.execute(
-        select(UserModel).where(UserModel.id == current_user_id)
-    )
-    current_user = user_result.scalar_one_or_none()
-
-    if not current_user or not current_user.is_active:
+    if user_auth_id != user_id and not user.has_group("admin"):
         raise HTTPException(
-            status_code=401,
-            detail="User not found or not active."
-        )
-
-    if current_user_id != user_id and not current_user.has_group("admin"):
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to edit this profile."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this profile.",
         )
 
     target_user_result = await db.execute(
@@ -84,7 +96,7 @@ async def create_user_profile(
     )
     target_user = target_user_result.scalar_one_or_none()
 
-    if not target_user:
+    if not target_user or not target_user.is_active:
         raise HTTPException(
             status_code=401,
             detail="User not found or not active."
@@ -94,20 +106,13 @@ async def create_user_profile(
         select(UserProfileModel).where(UserProfileModel.user_id == user_id)
     )
     if existing_profile_check.scalar_one_or_none():
-        raise HTTPException(status_code=400,
-                            detail="User already has a profile.")
-
-    try:
-        profile_fields = ProfileRequestSchema(
-            first_name=first_name,
-            last_name=last_name,
-            gender=gender,
-            date_of_birth=date_of_birth,
-            info=info
+        raise HTTPException(
+            status_code=400,
+            detail="User already has a profile."
         )
-        validate_image(avatar)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+
+    profile_data = profile_data.model_dump()
+    avatar = profile_data.pop("avatar")
 
     filename = f"avatars/{user_id}_avatar.jpg"
     try:
@@ -116,24 +121,21 @@ async def create_user_profile(
             filename=filename,
             file_data=file_content,
         )
+        avatar_url = await storage_client.get_file_url(filename=filename)
     except Exception:
         raise HTTPException(
             status_code=500,
             detail="Failed to upload avatar. Please try again later."
         )
 
-    avatar_url = await storage_client.get_file_url(filename=filename)
-
     new_profile = UserProfileModel(
-        user_id=user_id,
-        first_name=profile_fields.first_name,
-        last_name=profile_fields.last_name,
-        gender=profile_fields.gender,
-        date_of_birth=profile_fields.date_of_birth,
-        info=profile_fields.info,
-        avatar=avatar_url
+        first_name=profile_data.pop("first_name"),
+        last_name=profile_data.pop("last_name"),
+        gender=profile_data.pop("gender"),
+        date_of_birth=profile_data.pop("date_of_birth"),
+        info=profile_data.pop("info"),
+        avatar=avatar_url,
     )
-
     db.add(new_profile)
     await db.commit()
     await db.refresh(new_profile)
