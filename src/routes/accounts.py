@@ -138,12 +138,11 @@ async def register_user(
             detail="An error occurred during user creation."
         ) from e
     else:
-        activate_link = (f"http://127.0.0.1:8000/api/v1/accounts/activate/"
-                         f"?token={activation_token}")
+        activation_link = "http://127.0.0.1/accounts/activate/"
         background_tasks.add_task(
             email_sender.send_activation_email,
             str(new_user.email),
-            activate_link
+            activation_link
         )
 
         return UserRegistrationResponseSchema.model_validate(new_user)
@@ -243,7 +242,7 @@ async def activate_account(
     await db.delete(token_record)
     await db.commit()
 
-    login_link = "http://127.0.0.1:8000/api/v1/accounts/login/"
+    login_link = "http://127.0.0.1/accounts/login/"
     background_tasks.add_task(
         email_sender.send_activation_complete_email,
         str(user.email),
@@ -302,8 +301,7 @@ async def request_password_reset_token(
     db.add(reset_token)
     await db.commit()
 
-    reset_link = (f"http://127.0.0.1:8000/api/v1/accounts/reset-password/"
-                  f"complete/?token={reset_token.token}")
+    reset_link = "http://127.0.0.1/accounts/password-reset-complete/"
     background_tasks.add_task(
         email_sender.send_password_reset_email,
         str(user.email),
@@ -429,7 +427,7 @@ async def reset_password(
             detail="An error occurred while resetting the password."
         )
 
-    login_link = "http://127.0.0.1:8000/api/v1/accounts/login/"
+    login_link = "http://127.0.0.1/accounts/login/"
     background_tasks.add_task(
         email_sender.send_password_reset_complete_email,
         str(user.email),
