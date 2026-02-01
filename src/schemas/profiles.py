@@ -38,20 +38,37 @@ class ProfileCreateSchema(BaseModel):
             avatar=avatar
         )
 
-    @field_validator("first_name", "last_name")
+    @field_validator("first_name")
     @classmethod
-    def validate_name_field(cls, name: str) -> str:
+    def validate_name_field(cls, value: str) -> str:
         try:
-            validate_name(name)
-            return name.lower()
+            validate_name(value)
+            return value.lower()
         except ValueError as e:
             raise HTTPException(
                 status_code=422,
                 detail=[{
                     "type": "value_error",
-                    "loc": ["first_name" if "first_name" in name else "last_name"],
+                    "loc": "first_name",
                     "msg": str(e),
-                    "input": name
+                    "input": value
+                }]
+            )
+
+    @field_validator("last_name")
+    @classmethod
+    def validate_name_field(cls, value: str) -> str:
+        try:
+            validate_name(value)
+            return value.lower()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=[{
+                    "type": "value_error",
+                    "loc": "last_name",
+                    "msg": str(e),
+                    "input": value
                 }]
             )
 
