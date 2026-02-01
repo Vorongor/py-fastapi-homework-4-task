@@ -28,7 +28,8 @@ from exceptions import TokenExpiredError, InvalidTokenError
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/users/{user_id}/profile/"
+    tokenUrl="/api/v1/users/{user_id}/profile/",
+    auto_error=False
 )
 
 
@@ -42,6 +43,7 @@ async def _get_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found or not active.",
         )
+    return user
 
 
 @router.post(
@@ -51,8 +53,13 @@ async def _get_user(
 )
 async def create_user_profile(
         user_id: int,
-        profile_data: ProfileRequestSchema,
-        token: Annotated[str, Depends(oauth2_scheme)],
+        first_name: Annotated[str, Form()],
+        last_name: Annotated[str, Form()],
+        gender: Annotated[str, Form()],
+        date_of_birth: Annotated[str, Form()],
+        info: Annotated[str, Form()],
+        avatar: Annotated[UploadFile, File()],
+        token: Annotated[str | None, Depends(oauth2_scheme)],
         db: Annotated[AsyncSession, Depends(get_db)],
         jwt_manager: Annotated[
             JWTAuthManagerInterface, Depends(get_jwt_auth_manager)],
@@ -64,76 +71,56 @@ async def create_user_profile(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header is missing",
         )
+
     try:
         payload = jwt_manager.decode_access_token(token)
-        user_auth_id: int = payload.get("user_id") or payload.get("sub")
+        user_auth_id = payload.get("user_id") or payload.get("sub")
         if user_auth_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
-            )
-    except InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Authorization header format. Expected 'Bearer <token>'",
-        )
-    except TokenExpiredError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired.",
-        )
+            raise HTTPException(status_code=401,
+                                detail="Could not validate credentials")
+    except (InvalidTokenError, TokenExpiredError) as e:
+        detail = "Token has expired." if isinstance(
+            e,
+            TokenExpiredError
+        ) else "Invalid Authorization header format. Expected 'Bearer <token>'"
+        raise HTTPException(status_code=401, detail=detail)
 
-    user = await _get_user(db=db, user_id=user_auth_id)
+    current_user = await _get_user(db=db, user_id=user_auth_id)
 
-    if user_auth_id != user_id and not user.has_group("admin"):
+    if int(user_auth_id) != user_id and not current_user.has_group("admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to edit this profile.",
         )
 
-    target_user_result = await db.execute(
-        select(UserModel).where(UserModel.id == user_id)
-    )
-    target_user = target_user_result.scalar_one_or_none()
-
+    target_user = await db.get(UserModel, user_id)
     if not target_user or not target_user.is_active:
-        raise HTTPException(
-            status_code=401,
-            detail="User not found or not active."
-        )
+        raise HTTPException(status_code=404,
+                            detail="User not found or not active.")
 
-    existing_profile_check = await db.execute(
+    existing_profile = await db.execute(
         select(UserProfileModel).where(UserProfileModel.user_id == user_id)
     )
-    if existing_profile_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="User already has a profile."
-        )
-
-    profile_data = profile_data.model_dump()
-    avatar = profile_data.pop("avatar")
+    if existing_profile.scalar_one_or_none():
+        raise HTTPException(status_code=400,
+                            detail="User already has a profile.")
 
     filename = f"avatars/{user_id}_avatar.jpg"
     try:
         file_content = await avatar.read()
-        await storage_client.upload_file(
-            filename=filename,
-            file_data=file_content,
-        )
+        await storage_client.upload_file(filename=filename,
+                                         file_data=file_content)
         avatar_url = await storage_client.get_file_url(filename=filename)
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to upload avatar. Please try again later."
-        )
+        raise HTTPException(status_code=500, detail="Failed to upload avatar.")
 
     new_profile = UserProfileModel(
-        first_name=profile_data.pop("first_name"),
-        last_name=profile_data.pop("last_name"),
-        gender=profile_data.pop("gender"),
-        date_of_birth=profile_data.pop("date_of_birth"),
-        info=profile_data.pop("info"),
+        user_id=user_id,
+        first_name=first_name,
+        last_name=last_name,
+        gender=gender,
+        date_of_birth=date_of_birth,
+        info=info,
         avatar=avatar_url,
     )
     db.add(new_profile)
