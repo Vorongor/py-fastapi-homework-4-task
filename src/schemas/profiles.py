@@ -11,10 +11,7 @@ from validation import (
     validate_birth_date
 )
 
-
-class GenderEnum(str, enum.Enum):
-    MAN = "man"
-    WOMAN = "woman"
+from src.database.models.accounts import GenderEnum
 
 
 class ProfileRequestSchema(BaseModel):

@@ -21,8 +21,7 @@ from storages import S3StorageInterface
 from validation import validate_image
 from exceptions import TokenExpiredError, InvalidTokenError
 
-from src.database.models.accounts import UserGroupEnum
-from src.schemas.profiles import GenderEnum
+from src.database.models.accounts import UserGroupEnum, GenderEnum
 
 router = APIRouter()
 
