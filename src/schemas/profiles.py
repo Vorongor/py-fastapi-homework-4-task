@@ -1,9 +1,8 @@
 import enum
 from datetime import date
 
-from fastapi import UploadFile, Form, File, HTTPException
-from fastapi.openapi.models import Schema
-from pydantic import BaseModel, field_validator, HttpUrl, ConfigDict
+from fastapi import UploadFile, File
+from pydantic import BaseModel, field_validator, ConfigDict
 
 from validation import (
     validate_name,
@@ -11,6 +10,8 @@ from validation import (
     validate_gender,
     validate_birth_date
 )
+
+
 class GenderEnum(str, enum.Enum):
     MAN = "man"
     WOMAN = "woman"

@@ -12,6 +12,7 @@ from fastapi import (
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from database import get_db, UserModel, UserProfileModel
 from config import get_jwt_auth_manager, get_s3_storage_client
@@ -21,9 +22,9 @@ from storages import S3StorageInterface
 from validation import validate_image
 from exceptions import TokenExpiredError
 
+
 router = APIRouter()
 
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 security = HTTPBearer()
 
@@ -69,7 +70,7 @@ async def create_user_profile(
     if not current_user or not current_user.is_active:
         raise HTTPException(
             status_code=401,
-                            detail="User not found or not active."
+            detail="User not found or not active."
         )
 
     if current_user_id != user_id and not current_user.has_group("admin"):
@@ -86,7 +87,7 @@ async def create_user_profile(
     if not target_user:
         raise HTTPException(
             status_code=401,
-                            detail="User not found or not active."
+            detail="User not found or not active."
         )
 
     existing_profile_check = await db.execute(
