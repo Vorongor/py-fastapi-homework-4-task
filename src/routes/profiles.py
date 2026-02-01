@@ -50,7 +50,7 @@ async def get_current_user_from_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=("Invalid Authorization header format. "
-                   "Expected 'Bearer <token>'"),
+                    "Expected 'Bearer <token>'"),
         )
 
     token = auth_header.removeprefix("Bearer ").strip()
@@ -66,7 +66,7 @@ async def get_current_user_from_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=("Invalid Authorization header format. "
-                   "Expected 'Bearer <token>'"),
+                    "Expected 'Bearer <token>'"),
         )
 
     user_id = payload.get("user_id") or payload.get("sub")
