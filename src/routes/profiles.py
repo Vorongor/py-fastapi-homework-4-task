@@ -7,13 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_s3_storage_client, get_jwt_auth_manager
 from database import get_db
-from database.models.accounts import UserModel, UserProfileModel, GenderEnum, UserGroupModel, UserGroupEnum
+from database.models.accounts import (
+    UserModel,
+    UserProfileModel,
+    GenderEnum,
+    UserGroupModel,
+    UserGroupEnum
+)
 from exceptions import BaseSecurityError, S3FileUploadError
 from schemas.profiles import ProfileCreateSchema, ProfileResponseSchema
 from security.interfaces import JWTAuthManagerInterface
 from security.http import get_token
 from storages import S3StorageInterface
-
 
 router = APIRouter()
 
@@ -30,9 +35,10 @@ async def create_profile(
         jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
         db: AsyncSession = Depends(get_db),
         s3_client: S3StorageInterface = Depends(get_s3_storage_client),
-        profile_data: ProfileCreateSchema = Depends(ProfileCreateSchema.from_form)
+        profile_data: ProfileCreateSchema = Depends(
+            ProfileCreateSchema.from_form
+        )
 ) -> ProfileResponseSchema:
-
     try:
         payload = jwt_manager.decode_access_token(token)
         token_user_id = payload.get("user_id")
@@ -65,7 +71,9 @@ async def create_profile(
             detail="User not found or not active."
         )
 
-    stmt_profile = select(UserProfileModel).where(UserProfileModel.user_id == user.id)
+    stmt_profile = select(UserProfileModel).where(
+        UserProfileModel.user_id == user.id
+    )
     result_profile = await db.execute(stmt_profile)
     existing_profile = result_profile.scalars().first()
     if existing_profile:
@@ -78,7 +86,8 @@ async def create_profile(
     avatar_key = f"avatars/{user.id}_{profile_data.avatar.filename}"
 
     try:
-        await s3_client.upload_file(file_name=avatar_key, file_data=avatar_bytes)
+        await s3_client.upload_file(file_name=avatar_key,
+                                    file_data=avatar_bytes)
     except S3FileUploadError as e:
         print(f"Error uploading avatar to S3: {e}")
         raise HTTPException(
