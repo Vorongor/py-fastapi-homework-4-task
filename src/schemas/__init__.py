@@ -19,6 +19,6 @@ from schemas.accounts import (
 )
 
 from schemas.profiles import (
-    ProfileRequestSchema,
+    ProfileCreateSchema,
     ProfileResponseSchema
 )
