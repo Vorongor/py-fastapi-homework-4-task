@@ -59,7 +59,7 @@ class ProfileRequestSchema(BaseModel):
 
     @field_validator("avatar")
     @classmethod
-    def validate_avatar(cls, value: str) -> type[File]:
+    def validate_avatar(cls, value: UploadFile) -> type[File]:
         validate_image(value)
         return value
 
