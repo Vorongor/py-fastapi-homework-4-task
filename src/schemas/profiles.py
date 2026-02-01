@@ -40,7 +40,7 @@ class ProfileCreateSchema(BaseModel):
 
     @field_validator("first_name")
     @classmethod
-    def validate_name_field(cls, value: str) -> str:
+    def validate_first_name(cls, value: str) -> str:
         try:
             validate_name(value)
             return value.lower()
@@ -57,7 +57,7 @@ class ProfileCreateSchema(BaseModel):
 
     @field_validator("last_name")
     @classmethod
-    def validate_name_field(cls, value: str) -> str:
+    def validate_last_name(cls, value: str) -> str:
         try:
             validate_name(value)
             return value.lower()
